@@ -78,7 +78,6 @@ namespace Horego.BurstPlotConverter
             var adjustedBlockSize = blockSize * partitions;
             var buffer1 = new byte[adjustedBlockSize];
             var buffer2 = new byte[adjustedBlockSize];
-            var internalStopWatch = new Stopwatch();
             for (var scoopIndex = 0; scoopIndex < Constants.SCOOPS_IN_NONCE / 2 / partitions; scoopIndex++)
             {
                 var pos = scoopIndex * adjustedBlockSize;
@@ -91,8 +90,6 @@ namespace Horego.BurstPlotConverter
                 if (numread != adjustedBlockSize)
                     throw new InvalidOperationException($"read {numread} bytes instead of {adjustedBlockSize}.");
 
-
-                internalStopWatch.Start();
                 if (partitions == 1)
                 {
                     var hash1 = new byte[Constants.SHABAL256_HASH_SIZE];
@@ -127,7 +124,6 @@ namespace Horego.BurstPlotConverter
                         Interlocked.Add(ref iterationPosition, numnonces);
                     });
                 }
-                internalStopWatch.Stop();
                 
                 destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
                 await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
@@ -136,7 +132,6 @@ namespace Horego.BurstPlotConverter
                 await destinationStream.WriteAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
             }
 
-            Console.WriteLine(internalStopWatch.Elapsed.TotalMilliseconds + "ms");
             stopwatch.Stop();
             timerSubscription.Dispose();
             Progress.OnNext(new ProgressEventArgs(stopwatch.Elapsed, TimeSpan.Zero, 100));
