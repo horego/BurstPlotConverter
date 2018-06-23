@@ -3,3 +3,7 @@
 ################################################################################
 
 /bin
+/obj
+/packages
+/.vs
+/Horego.BurstPlotConverter.csproj.user
