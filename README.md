@@ -31,7 +31,7 @@ The performance is different based on your system. It took about 35 minutes for 
 * 1536Mb Memory usage
 * CPU i7-2600 (Sandy-Bridge)
 
-### Support
+## Support
 If you like my work donate me some burst to
 > BURST-ZH3A-9L8Z-BEUV-5QLSD
 
