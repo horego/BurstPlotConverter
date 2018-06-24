@@ -10,6 +10,9 @@ namespace Horego.BurstPlotConverter
 
         [Option('m', "memory", Required = false, HelpText = "Memory in megabytes (1024 megabyte = 1 gigabyte).", Default = 0)]
         public int MemoryInMb { get; set; }
+
+        [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
+        public long Checkpoint { get; set; }
     }
 
     [Verb("info", HelpText = "Plot and program information.")]
@@ -33,5 +36,8 @@ namespace Horego.BurstPlotConverter
 
         [Option('m', "memory", Required = false, HelpText = "Memory in megabytes (1024 megabyte = 1 gigabyte).", Default = 0)]
         public int MemoryInMb { get; set; }
+
+        [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
+        public long Checkpoint { get; set; }
     }
 }

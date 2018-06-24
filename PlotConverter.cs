@@ -8,12 +8,24 @@ using System.Threading.Tasks;
 
 namespace Horego.BurstPlotConverter
 {
+    internal class PlotConverterCheckpoint
+    {
+        public long Position { get; }
+
+        public PlotConverterCheckpoint(long position)
+        {
+            Position = position;
+        }
+    }
+
     internal class PlotConverter
     {
-        private readonly FileInfo m_InputFile;
-        private readonly PlotFile m_InputPlotFile;
+        readonly FileInfo m_InputFile;
+        readonly PlotFile m_InputPlotFile;
         readonly TimeSpan m_ProgressIntervall = TimeSpan.FromSeconds(10);
-        private readonly int m_Partitions;
+        readonly int m_Partitions;
+        CancellationTokenSource m_CancellationTokenSource = new CancellationTokenSource();
+        public PlotConverterCheckpoint Checkpoint { get; private set; }
 
         public int UsedMemoryInMb { get; }
         public ISubject<ProgressEventArgs> Progress { get; }
@@ -27,7 +39,12 @@ namespace Horego.BurstPlotConverter
             Progress = new Subject<ProgressEventArgs>();
         }
 
-        public async Task RunOutline(FileInfo outputFile)
+        public void Abort()
+        {
+            m_CancellationTokenSource.Cancel();
+        }
+
+        public async Task RunOutline(FileInfo outputFile, PlotConverterCheckpoint checkpoint)
         {
             var blockSize = m_InputPlotFile.Nonces * Constants.SCOOP_SIZE;
             
@@ -37,29 +54,30 @@ namespace Horego.BurstPlotConverter
             var inputStream = new FileStream(m_InputFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
 
             outputStream.SetLength(m_InputPlotFile.RealPlotSize); //Allocate memory
-            await ShufflePoc1To2(inputStream, outputStream, blockSize, m_InputPlotFile.Nonces, m_Partitions);
+            await ShufflePoc1To2(inputStream, outputStream, blockSize, m_InputPlotFile.Nonces, m_Partitions, checkpoint);
 
             inputStream.Close();
             outputStream.Close();
         }
 
-        public async Task RunInline()
+        public async Task RunInline(PlotConverterCheckpoint checkpoint)
         {
             var blockSize = m_InputPlotFile.Nonces * Constants.SCOOP_SIZE;
             m_InputPlotFile.Validate();
 
             var handle = new FileStream(m_InputFile.FullName, FileMode.Open, FileAccess.Read | FileAccess.Write, FileShare.None, 4096, true);
 
-            await ShufflePoc1To2(handle, handle, blockSize, m_InputPlotFile.Nonces, m_Partitions);
+            var done = await ShufflePoc1To2(handle, handle, blockSize, m_InputPlotFile.Nonces, m_Partitions, checkpoint);
 
             handle.Close();
-            m_InputPlotFile.Rename(m_InputPlotFile.Poc2FileName);
+            if (done)
+                m_InputPlotFile.Rename(m_InputPlotFile.Poc2FileName);
         }
 
-        async Task ShufflePoc1To2(FileStream sourceStream, FileStream destinationStream, long blockSize, long numnonces, int partitions)
+        async Task<bool> ShufflePoc1To2(FileStream sourceStream, FileStream destinationStream, long blockSize, long numnonces, int partitions, PlotConverterCheckpoint checkpoint)
         {
             var totalIterations = Constants.SCOOPS_IN_NONCE / 2 * numnonces;
-            var iterationPosition = 0l;
+            var iterationPosition = 0L;
 
             var stopwatch = Stopwatch.StartNew();
             var timer = Observable.Timer(TimeSpan.Zero, m_ProgressIntervall);
@@ -76,9 +94,14 @@ namespace Horego.BurstPlotConverter
             });
 
             var adjustedBlockSize = blockSize * partitions;
+            if (checkpoint.Position % adjustedBlockSize != 0)
+            {
+                throw new InvalidOperationException($"Can not resume plot conversion with checkpoint {checkpoint.Position} and {partitions} partitions.");
+            }
+            var resumeScoopIndex = checkpoint.Position / adjustedBlockSize;
             var buffer1 = new byte[adjustedBlockSize];
             var buffer2 = new byte[adjustedBlockSize];
-            for (var scoopIndex = 0; scoopIndex < Constants.SCOOPS_IN_NONCE / 2 / partitions; scoopIndex++)
+            for (var scoopIndex = resumeScoopIndex; scoopIndex < Constants.SCOOPS_IN_NONCE / 2 / partitions; scoopIndex++)
             {
                 var pos = scoopIndex * adjustedBlockSize;
                 sourceStream.Seek(pos, SeekOrigin.Begin);
@@ -124,7 +147,13 @@ namespace Horego.BurstPlotConverter
                         Interlocked.Add(ref iterationPosition, numnonces);
                     });
                 }
-                
+
+                if (m_CancellationTokenSource.IsCancellationRequested)
+                {
+                    Checkpoint = new PlotConverterCheckpoint(pos);
+                    break;
+                }
+
                 destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
                 await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
 
@@ -134,7 +163,10 @@ namespace Horego.BurstPlotConverter
 
             stopwatch.Stop();
             timerSubscription.Dispose();
-            Progress.OnNext(new ProgressEventArgs(stopwatch.Elapsed, TimeSpan.Zero, 100));
+            if (!m_CancellationTokenSource.IsCancellationRequested)
+                Progress.OnNext(new ProgressEventArgs(stopwatch.Elapsed, TimeSpan.Zero, 100));
+
+            return !m_CancellationTokenSource.IsCancellationRequested;
         }
 
         int GetPartitionFactor(long nonces, int useMemoryInMb)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using CommandLine;
 
 namespace Horego.BurstPlotConverter
@@ -9,6 +10,7 @@ namespace Horego.BurstPlotConverter
         static int Main(string[] args)
         {
             IDisposable progressSubscription = null;
+            PlotConverter plotConverter = null;
 
             void WriteProgess(ProgressEventArgs eventArgs)
             {
@@ -20,35 +22,53 @@ namespace Horego.BurstPlotConverter
                 Console.WriteLine($"Use {usedMemoryInMb} megabyte of memory.");
             }
 
-            var returnCode = Parser.Default.ParseArguments<InlineFileOptions, SeparateFileOptions, InfoOptions>(args)
+            var workingTask = Parser.Default.ParseArguments<InlineFileOptions, SeparateFileOptions, InfoOptions>(args)
                 .MapResult(
                     (InlineFileOptions opts) =>
                     {
-                        var plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         WriteMemoryUsage(plotConverter.UsedMemoryInMb);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-                        plotConverter.RunInline().Wait();
-                        return 0;
+                        return plotConverter.RunInline(new PlotConverterCheckpoint(opts.Checkpoint));
                     },
                     (SeparateFileOptions opts) =>
                     {
-                        var plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         WriteMemoryUsage(plotConverter.UsedMemoryInMb);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-                        plotConverter.RunOutline(new FileInfo(opts.OutputFile)).Wait();
-                        return 0;
+                        return plotConverter.RunOutline(new FileInfo(opts.OutputFile), new PlotConverterCheckpoint(opts.Checkpoint));
                     },
                     (InfoOptions opts) =>
                     {
-                        var plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-                        Console.Write(plotConverter.Info());
-                        return 0;
+                        return new TaskFactory().StartNew(() => plotConverter.Info());
                     },
-                    errs => 1);
+                    errs => new TaskFactory().StartNew(() => { }));
 
+            Console.CancelKeyPress += (sender, eventArgs) =>
+            {
+                if (plotConverter == null)
+                {
+                    return;
+                }
+                Console.WriteLine("Abort requested. Please wait until conversion has been safely aborted.");
+                plotConverter.Abort();
+                eventArgs.Cancel = true;
+            };
+
+            workingTask.Wait();
             progressSubscription?.Dispose();
-            return returnCode;
+
+            if (plotConverter?.Checkpoint != null)
+            {
+                Console.WriteLine($"Aborted conversion. You can safely resume conversion with:{Environment.NewLine}" +
+                                    $"-c {plotConverter.Checkpoint.Position}{Environment.NewLine}" +
+                                    $"Press enter to exit.");
+                Console.ReadLine();
+            }
+
+            return 0;
         }
     }
 }
