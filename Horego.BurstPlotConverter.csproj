@@ -5,6 +5,23 @@
     <TargetFrameworks>netcoreapp2.0;net461</TargetFrameworks>
 	<NetStandardImplicitPackageVersion>2.0</NetStandardImplicitPackageVersion>
     <NoWarn>NU1605</NoWarn>
+	<PublishWithAspNetCoreTargetManifest>false</PublishWithAspNetCoreTargetManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|netcoreapp2.0|AnyCPU'">
+    <OutputPath>bin\Release\BurstPlotConverterCore\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net461|AnyCPU'">
+    <OutputPath>bin\Release\BurstPlotConverter\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|netcoreapp2.0|AnyCPU'">
+    <OutputPath>bin\Debug\BurstPlotConverterCore\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net461|AnyCPU'">
+    <OutputPath>bin\Debug\BurstPlotConverter\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
