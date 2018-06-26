@@ -45,6 +45,11 @@ namespace Horego.BurstPlotConverter
                 Console.WriteLine($"Use {usedMemoryInMb} megabyte of memory.");
             }
 
+            void WriteConversionInfo(string fileName)
+            {
+                Console.WriteLine($"Start conversion of {fileName}.");
+            }
+
 #if NET461
             ProcessDiskPerformanceCounter diskPerformanceCounter = null;
             IDisposable diskPerformanceCounterSubscription = null;
@@ -79,6 +84,7 @@ namespace Horego.BurstPlotConverter
                     {
                         plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         WriteMemoryUsage(plotConverter.UsedMemoryInMb);
+                        WriteConversionInfo(opts.InputFile);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
 #if NET461
                         if (opts.WatchProcess != null)
@@ -97,6 +103,7 @@ namespace Horego.BurstPlotConverter
                     {
                         plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         WriteMemoryUsage(plotConverter.UsedMemoryInMb);
+                        WriteConversionInfo(opts.InputFile);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
 #if NET461
                         if (opts.WatchProcess != null)
@@ -115,7 +122,7 @@ namespace Horego.BurstPlotConverter
                     {
                         plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                         progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-                        return new TaskFactory().StartNew(() => plotConverter.Info());
+                        return new TaskFactory().StartNew(() => Console.WriteLine(plotConverter.Info()));
                     },
                     errs => new TaskFactory().StartNew(() => { }));
 
@@ -144,7 +151,6 @@ namespace Horego.BurstPlotConverter
                                     $"Press enter to exit.");
                 Console.ReadLine();
             }
-
             return 0;
         }
     }
