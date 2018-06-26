@@ -104,13 +104,17 @@ namespace Horego.BurstPlotConverter
             var buffer2 = new byte[adjustedBlockSize];
             for (var scoopIndex = resumeScoopIndex; scoopIndex < Constants.SCOOPS_IN_NONCE / 2 / partitions; scoopIndex++)
             {
+                var pos = scoopIndex * adjustedBlockSize;
+
                 await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
 
-                var pos = scoopIndex * adjustedBlockSize;
                 sourceStream.Seek(pos, SeekOrigin.Begin);
                 var numread = await sourceStream.ReadAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
                 if (numread != adjustedBlockSize)
                     throw new InvalidOperationException($"read {numread} bytes instead of {adjustedBlockSize}.");
+
+                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
                 sourceStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End);
                 numread = await sourceStream.ReadAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
                 if (numread != adjustedBlockSize)
@@ -161,6 +165,8 @@ namespace Horego.BurstPlotConverter
 
                 destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
                 await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
+
+                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
 
                 destinationStream.Seek(pos, SeekOrigin.Begin);
                 await destinationStream.WriteAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
