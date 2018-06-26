@@ -7,5 +7,6 @@
 /packages
 /.vs
 /Horego.BurstPlotConverter.csproj.user
-/Properties/PublishProfiles
 /Properties/launchSettings.json
+/Properties/PublishProfiles/DotNetCore.pubxml.user
+/Properties/PublishProfiles/DotNet461.pubxml.user
