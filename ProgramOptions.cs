@@ -13,6 +13,14 @@ namespace Horego.BurstPlotConverter
 
         [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
         public long Checkpoint { get; set; }
+
+#if NET461
+        [Option('w', "watchprocess", Required = false, HelpText = "Watch the disk usage of an process. Do only conversion if the process have no read or write access", Default = null)]
+        public string WatchProcess { get; set; }
+
+        [Option('t', "threshold", Required = false, HelpText = "When watching a process the sum of read and write speed in megabyte per second (1024 kilobyte = 1 megabyte) of the process (named threshold) is used to autoresume and pause conversion.", Default = 10)]
+        public float WatchProcessThresholdInMb { get; set; }
+#endif
     }
 
     [Verb("info", HelpText = "Plot and program information.")]
@@ -39,5 +47,13 @@ namespace Horego.BurstPlotConverter
 
         [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
         public long Checkpoint { get; set; }
+
+#if NET461
+        [Option('w', "watchprocess", Required = false, HelpText = "Watch the disk usage of an process. Do only conversion if the process have no read or write access", Default = null)]
+        public string WatchProcess { get; set; }
+
+        [Option('t', "threshold", Required = false, HelpText = "When watching a process the sum of read and write speed in megabyte per second (1024 kilobyte = 1 megabyte) of the process (named threshold) is used to autoresume and pause conversion.", Default = 10)]
+        public float WatchProcessThresholdInMb { get; set; }
+#endif
     }
 }

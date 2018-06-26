@@ -24,6 +24,7 @@ namespace Horego.BurstPlotConverter
         readonly PlotFile m_InputPlotFile;
         readonly TimeSpan m_ProgressIntervall = TimeSpan.FromSeconds(10);
         readonly int m_Partitions;
+        PauseAndResumeTask m_PauseAndResumeTask = new PauseAndResumeTask();
         CancellationTokenSource m_CancellationTokenSource = new CancellationTokenSource();
         public PlotConverterCheckpoint Checkpoint { get; private set; }
 
@@ -90,7 +91,7 @@ namespace Horego.BurstPlotConverter
                     ? TimeSpan.MaxValue
                     : TimeSpan.FromTicks(Convert.ToInt64((double)elapsedTime.Ticks / iterationPosition *
                                                          iterationsRemaining));
-                Progress.OnNext(new ProgressEventArgs(elapsedTime, remainingTime, percentage));
+                Progress.OnNext(new ProgressEventArgs(elapsedTime, remainingTime, percentage, this.IsPausedUnsafe()));
             });
 
             var adjustedBlockSize = blockSize * partitions;
@@ -103,6 +104,8 @@ namespace Horego.BurstPlotConverter
             var buffer2 = new byte[adjustedBlockSize];
             for (var scoopIndex = resumeScoopIndex; scoopIndex < Constants.SCOOPS_IN_NONCE / 2 / partitions; scoopIndex++)
             {
+                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
                 var pos = scoopIndex * adjustedBlockSize;
                 sourceStream.Seek(pos, SeekOrigin.Begin);
                 var numread = await sourceStream.ReadAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
@@ -154,6 +157,8 @@ namespace Horego.BurstPlotConverter
                     break;
                 }
 
+                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
                 destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
                 await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
 
@@ -164,7 +169,7 @@ namespace Horego.BurstPlotConverter
             stopwatch.Stop();
             timerSubscription.Dispose();
             if (!m_CancellationTokenSource.IsCancellationRequested)
-                Progress.OnNext(new ProgressEventArgs(stopwatch.Elapsed, TimeSpan.Zero, 100));
+                Progress.OnNext(new ProgressEventArgs(stopwatch.Elapsed, TimeSpan.Zero, 100, false));
 
             return !m_CancellationTokenSource.IsCancellationRequested;
         }
@@ -219,6 +224,21 @@ namespace Horego.BurstPlotConverter
                    $"Plot nonces: {plotFile.Nonces}" + Environment.NewLine +
                    $"Expeced plot size: {plotFile.ExpectedPlotSize}" + Environment.NewLine +
                    $"Real plot size: {plotFile.RealPlotSize}";
+        }
+
+        public bool IsPausedUnsafe()
+        {
+            return m_PauseAndResumeTask.IsPausedUnsafe();
+        }
+
+        public bool Resume()
+        {
+            return m_PauseAndResumeTask.Resume();
+        }
+
+        public bool Pause()
+        {
+            return m_PauseAndResumeTask.Pause();
         }
     }
 }
