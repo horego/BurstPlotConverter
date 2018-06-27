@@ -3,15 +3,41 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandLine;
+using NLog;
 
 namespace Horego.BurstPlotConverter
 {
     class Program
     {
+        private static Logger m_Log = LogManager.GetCurrentClassLogger();
+
         static int Main(string[] args)
         {
+            IDisposable progressSubscription = null;
+            PlotConverter plotConverter = null;
+            
+            void WriteProgess(ProgressEventArgs eventArgs)
+            {
+                m_Log.Info((eventArgs.IsPaused
+                                      ? "[Paused]\t"
+                                      : "") +
+                                  $"{eventArgs.PercentComplete:0.00}%\telapsed: {eventArgs.ElapsedTime.ToReadableString()}\tremaining: {eventArgs.RemainingTime.ToReadableString()}.");
+            }
+
+            void WriteMemoryUsage(int usedMemoryInMb)
+            {
+                m_Log.Info($"Use {usedMemoryInMb} megabyte of memory.");
+            }
+
+            void WriteConversionInfo(string fileName)
+            {
+                m_Log.Info($"Start conversion of {fileName}.");
+            }
 
 #if NET461
+            ProcessDiskPerformanceCounter diskPerformanceCounter = null;
+            IDisposable diskPerformanceCounterSubscription = null;
+
             string GetInstanceNameOfProcess(string processName)
             {
                 var processCategory = new ProcessPerformanceCounterCategory();
@@ -27,32 +53,6 @@ namespace Horego.BurstPlotConverter
                 }
                 return instanceNames.First();
             }
-#endif
-
-            IDisposable progressSubscription = null;
-            PlotConverter plotConverter = null;
-
-            void WriteProgess(ProgressEventArgs eventArgs)
-            {
-                Console.WriteLine((eventArgs.IsPaused
-                                      ? "[Paused]\t"
-                                      : "") +
-                                  $"{eventArgs.PercentComplete:0.00}%\telapsed: {eventArgs.ElapsedTime.ToReadableString()}\tremaining: {eventArgs.RemainingTime.ToReadableString()}.");
-            }
-
-            void WriteMemoryUsage(int usedMemoryInMb)
-            {
-                Console.WriteLine($"Use {usedMemoryInMb} megabyte of memory.");
-            }
-
-            void WriteConversionInfo(string fileName)
-            {
-                Console.WriteLine($"Start conversion of {fileName}.");
-            }
-
-#if NET461
-            ProcessDiskPerformanceCounter diskPerformanceCounter = null;
-            IDisposable diskPerformanceCounterSubscription = null;
 
             void ControlPauseAndResume(ProcessDiskPerformanceCounter.DiskUsageEventArgs usage, float bytePerSecondThreshold)
             {
@@ -60,21 +60,39 @@ namespace Horego.BurstPlotConverter
                 if (diskUsage < bytePerSecondThreshold)
                 {
                     if (plotConverter.Resume())
-                        Console.WriteLine($"Resume conversion. Disk usage {diskUsage.BytesToReadableString()} is below threshold {bytePerSecondThreshold.BytesToReadableString()} per second.");
+                        m_Log.Info($"Resume conversion. Disk usage {diskUsage.BytesToReadableString()} is below threshold {bytePerSecondThreshold.BytesToReadableString()} per second.");
                 }
                 else
                 {
                     if (plotConverter.Pause())
-                        Console.WriteLine($"Pause conversion. Disk usage {diskUsage.BytesToReadableString()} is above threshold {bytePerSecondThreshold.BytesToReadableString()} per second.");
+                        m_Log.Info($"Pause conversion. Disk usage {diskUsage.BytesToReadableString()} is above threshold {bytePerSecondThreshold.BytesToReadableString()} per second.");
                 }
             }
 
             void PauseAndResumeInfo(float bytePerSecondThreshold, string instanceName)
             {
-                Console.WriteLine($"Enabled resume and pause for process instance {instanceName}.{Environment.NewLine}" +
+                m_Log.Info($"Enabled resume and pause for process instance {instanceName}.{Environment.NewLine}" +
                                   $"Resume when disk usage is below {bytePerSecondThreshold.BytesToReadableString()}.{Environment.NewLine}" +
                                   $"Pause when disk usage is above {bytePerSecondThreshold.BytesToReadableString()}.");
+            }
 
+            void InitDiskPerformanceCounter(string watchProcess, float thresholdInBytes)
+            {
+                if (watchProcess == null)
+                {
+                    return;
+                }
+                diskPerformanceCounter = new ProcessDiskPerformanceCounter(GetInstanceNameOfProcess(watchProcess));
+                diskPerformanceCounterSubscription = diskPerformanceCounter.DiskUsage.Subscribe(
+                    i => ControlPauseAndResume(i, thresholdInBytes));
+                PauseAndResumeInfo(thresholdInBytes, diskPerformanceCounter.InstanceName);
+                diskPerformanceCounter.Start();
+            }
+
+            void DisposeDiskPerformanceCounter()
+            {
+                diskPerformanceCounterSubscription?.Dispose();
+                diskPerformanceCounter?.Dispose();
             }
 #endif
 
@@ -82,47 +100,55 @@ namespace Horego.BurstPlotConverter
                 .MapResult(
                     (InlineFileOptions opts) =>
                     {
-                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
-                        WriteMemoryUsage(plotConverter.UsedMemoryInMb);
-                        WriteConversionInfo(opts.InputFile);
-                        progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-#if NET461
-                        if (opts.WatchProcess != null)
+                        try
                         {
-                            var threshold = opts.WatchProcessThresholdInMb * 1024 * 1024;
-                            diskPerformanceCounter = new ProcessDiskPerformanceCounter(GetInstanceNameOfProcess(opts.WatchProcess));
-                            diskPerformanceCounterSubscription = diskPerformanceCounter.DiskUsage.Subscribe(
-                                i => ControlPauseAndResume(i, threshold));
-                            PauseAndResumeInfo(threshold, diskPerformanceCounter.InstanceName);
-                            diskPerformanceCounter.Start();
-                        }
+                            plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                            WriteMemoryUsage(plotConverter.UsedMemoryInMb);
+                            WriteConversionInfo(opts.InputFile);
+                            progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
+#if NET461
+                            InitDiskPerformanceCounter(opts.WatchProcess, opts.WatchProcessThresholdInMb * 1024 * 1024);
 #endif
-                        return plotConverter.RunInline(new PlotConverterCheckpoint(opts.Checkpoint));
+                            return plotConverter.RunInline(new PlotConverterCheckpoint(opts.Checkpoint));
+                        }
+                        catch (Exception e)
+                        {
+                            m_Log.Error(e);
+                            throw;
+                        }
                     },
                     (SeparateFileOptions opts) =>
                     {
-                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
-                        WriteMemoryUsage(plotConverter.UsedMemoryInMb);
-                        WriteConversionInfo(opts.InputFile);
-                        progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-#if NET461
-                        if (opts.WatchProcess != null)
+                        try
                         {
-                            var threshold = opts.WatchProcessThresholdInMb * 1024 * 1024;
-                            diskPerformanceCounter = new ProcessDiskPerformanceCounter(GetInstanceNameOfProcess(opts.WatchProcess));
-                            diskPerformanceCounterSubscription = diskPerformanceCounter.DiskUsage.Subscribe(
-                                i => ControlPauseAndResume(i, threshold));
-                            PauseAndResumeInfo(threshold, diskPerformanceCounter.InstanceName);
-                            diskPerformanceCounter.Start();
-                        }
+                            plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                            WriteMemoryUsage(plotConverter.UsedMemoryInMb);
+                            WriteConversionInfo(opts.InputFile);
+                            progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
+#if NET461
+                            InitDiskPerformanceCounter(opts.WatchProcess, opts.WatchProcessThresholdInMb * 1024 * 1024);
 #endif
-                        return plotConverter.RunOutline(new FileInfo(opts.OutputFile), new PlotConverterCheckpoint(opts.Checkpoint));
+                            return plotConverter.RunOutline(new FileInfo(opts.OutputFile), new PlotConverterCheckpoint(opts.Checkpoint));
+                        }
+                        catch (Exception e)
+                        {
+                            m_Log.Error(e);
+                            throw;
+                        }
                     },
                     (InfoOptions opts) =>
                     {
-                        plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
-                        progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
-                        return new TaskFactory().StartNew(() => Console.WriteLine(plotConverter.Info()));
+                        try
+                        {
+                            plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
+                            progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
+                            return new TaskFactory().StartNew(() => m_Log.Info(plotConverter.Info()));
+                        }
+                        catch (Exception e)
+                        {
+                            m_Log.Error(e);
+                            throw;
+                        }
                     },
                     errs => new TaskFactory().StartNew(() => { }));
 
@@ -132,21 +158,29 @@ namespace Horego.BurstPlotConverter
                 {
                     return;
                 }
-                Console.WriteLine("Abort requested. Please wait until conversion has been safely aborted.");
+                m_Log.Info("Abort requested. Please wait until conversion has been safely aborted.");
                 plotConverter.Abort();
                 eventArgs.Cancel = true;
             };
 
-            workingTask.Wait();
+            try
+            {
+                workingTask.Wait();
+            }
+            catch (Exception e)
+            {
+                m_Log.Fatal(e);
+                throw;
+            }
+
             progressSubscription?.Dispose();
 #if NET461
-            diskPerformanceCounterSubscription?.Dispose();
-            diskPerformanceCounter?.Dispose();
+            DisposeDiskPerformanceCounter();
 #endif
 
             if (plotConverter?.Checkpoint != null)
             {
-                Console.WriteLine($"Aborted conversion. You can safely resume conversion with:{Environment.NewLine}" +
+                m_Log.Info($"Aborted conversion. You can safely resume conversion with:{Environment.NewLine}" +
                                     $"-c {plotConverter.Checkpoint.Position}{Environment.NewLine}" +
                                     $"Press enter to exit.");
                 Console.ReadLine();

@@ -24,10 +24,10 @@ namespace Horego.BurstPlotConverter
         readonly PlotFile m_InputPlotFile;
         readonly TimeSpan m_ProgressIntervall = TimeSpan.FromSeconds(10);
         readonly int m_Partitions;
-        PauseAndResumeTask m_PauseAndResumeTask = new PauseAndResumeTask();
-        CancellationTokenSource m_CancellationTokenSource = new CancellationTokenSource();
-        public PlotConverterCheckpoint Checkpoint { get; private set; }
+        readonly PauseAndResumeTask m_PauseAndResumeTask = new PauseAndResumeTask();
+        readonly CancellationTokenSource m_CancellationTokenSource = new CancellationTokenSource();
 
+        public PlotConverterCheckpoint Checkpoint { get; private set; }
         public int UsedMemoryInMb { get; }
         public ISubject<ProgressEventArgs> Progress { get; }
 
@@ -223,7 +223,8 @@ namespace Horego.BurstPlotConverter
         public string Info()
         {
             var plotFile = m_InputPlotFile;
-            return $"Used memory: {UsedMemoryInMb} MByte." + Environment.NewLine +
+            return $"Input file: {m_InputFile.FullName}" + Environment.NewLine +
+                   $"Used memory: {UsedMemoryInMb} MByte." + Environment.NewLine +
                    $"Used paritions: {m_Partitions}" + Environment.NewLine +
                    $"Plot account: {plotFile.Id}" + Environment.NewLine +
                    $"Plot nonce start: {plotFile.Offset}" + Environment.NewLine +

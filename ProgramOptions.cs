@@ -3,7 +3,7 @@
 namespace Horego.BurstPlotConverter
 {
     [Verb("inline", HelpText = "Inline plot conversion.")]
-    class InlineFileOptions
+    partial class InlineFileOptions
     {
         [Option('r', "read", Required = true, HelpText = "Input file to be processed.")]
         public string InputFile { get; set; }
@@ -13,14 +13,6 @@ namespace Horego.BurstPlotConverter
 
         [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
         public long Checkpoint { get; set; }
-
-#if NET461
-        [Option('w', "watchprocess", Required = false, HelpText = "Watch the disk usage of an process. Do only conversion if the process have no read or write access", Default = null)]
-        public string WatchProcess { get; set; }
-
-        [Option('t', "threshold", Required = false, HelpText = "When watching a process the sum of read and write speed in megabyte per second (1024 kilobyte = 1 megabyte) of the process (named threshold) is used to autoresume and pause conversion.", Default = 10)]
-        public float WatchProcessThresholdInMb { get; set; }
-#endif
     }
 
     [Verb("info", HelpText = "Plot and program information.")]
@@ -34,7 +26,7 @@ namespace Horego.BurstPlotConverter
     }
 
     [Verb("outline", HelpText = "Sepeate output file plot conversion.")]
-    class SeparateFileOptions
+    partial class SeparateFileOptions
     {
         [Option('r', "read", Required = true, HelpText = "Input file to be processed.")]
         public string InputFile { get; set; }
@@ -48,12 +40,25 @@ namespace Horego.BurstPlotConverter
         [Option('c', "checkpoint", Required = false, HelpText = "Checkpoint information to resume plot conversion.", Default = 0L)]
         public long Checkpoint { get; set; }
 
+    }
+
 #if NET461
+    partial class SeparateFileOptions
+    {
         [Option('w', "watchprocess", Required = false, HelpText = "Watch the disk usage of an process. Do only conversion if the process have no read or write access", Default = null)]
         public string WatchProcess { get; set; }
 
         [Option('t', "threshold", Required = false, HelpText = "When watching a process the sum of read and write speed in megabyte per second (1024 kilobyte = 1 megabyte) of the process (named threshold) is used to autoresume and pause conversion.", Default = 10)]
         public float WatchProcessThresholdInMb { get; set; }
-#endif
     }
+
+    partial class InlineFileOptions
+    {
+        [Option('w', "watchprocess", Required = false, HelpText = "Watch the disk usage of an process. Do only conversion if the process have no read or write access", Default = null)]
+        public string WatchProcess { get; set; }
+
+        [Option('t', "threshold", Required = false, HelpText = "When watching a process the sum of read and write speed in megabyte per second (1024 kilobyte = 1 megabyte) of the process (named threshold) is used to autoresume and pause conversion.", Default = 10)]
+        public float WatchProcessThresholdInMb { get; set; }
+    }
+#endif
 }

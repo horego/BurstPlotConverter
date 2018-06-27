@@ -4,34 +4,35 @@ namespace Horego.BurstPlotConverter
 {
     internal static class ByteExtensions
     {
-        public static string BytesToReadableString(this float bytes, int precission = 2)
+        private const long KB = 1024, MB = KB * 1024, GB = MB * 1024, TB = GB * 1024;
+
+        public static string BytesToReadableString(this float bytes)
         {
-            long B = 0, KB = 1024, MB = KB * 1024, GB = MB * 1024, TB = GB * 1024;
             double size = bytes;
-            var suffix = nameof(B);
+            var suffix = "B";
 
             if (bytes >= TB)
             {
-                size = Math.Round(bytes / TB, precission);
+                size = bytes / TB;
                 suffix = "TB";
             }
             else if (bytes >= GB)
             {
-                size = Math.Round(bytes / GB, precission);
+                size = bytes / GB;
                 suffix = "GB";
             }
             else if (bytes >= MB)
             {
-                size = Math.Round(bytes / MB, precission);
+                size = bytes / MB;
                 suffix = "MB";
             }
             else if (bytes >= KB)
             {
-                size = Math.Round(bytes / KB, precission);
+                size = bytes / KB;
                 suffix = "KB";
             }
 
-            return $"{size} {suffix}";
+            return $"{size:0.00} {suffix}";
         }
     }
 }
