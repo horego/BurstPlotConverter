@@ -5,9 +5,8 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
-using Horego.BurstPlotConverter.Core;
 
-namespace Horego.BurstPlotConverter
+namespace Horego.BurstPlotConverter.Core
 {
     internal class ProgressEventArgs
     {
