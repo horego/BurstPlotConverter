@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Horego.BurstPlotConverter
+﻿namespace Horego.BurstPlotConverter.Extensions
 {
     internal static class ByteExtensions
     {

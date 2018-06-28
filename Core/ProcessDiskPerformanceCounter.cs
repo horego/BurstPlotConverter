@@ -5,10 +5,11 @@ using System.Linq;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.RegularExpressions;
+using Horego.BurstPlotConverter.Extensions;
 
 #if NET461
 
-namespace Horego.BurstPlotConverter
+namespace Horego.BurstPlotConverter.Core
 {
     internal class ProcessDiskPerformanceCounter : IDisposable
     {

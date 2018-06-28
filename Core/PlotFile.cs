@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 
-namespace Horego.BurstPlotConverter
+namespace Horego.BurstPlotConverter.Core
 {
     internal class PlotFile
     {
@@ -19,6 +19,10 @@ namespace Horego.BurstPlotConverter
         public PlotFile(FileInfo file)
         {
             m_File = file ?? throw new ArgumentNullException(nameof(file));
+            if (!file.Exists)
+            {
+                throw new PlotConverterException($"Plot file {file.FullName} not found.");
+            }
             ParsePlotName(m_File.Name);
         }
 
@@ -26,7 +30,7 @@ namespace Horego.BurstPlotConverter
         {
             var parts = plotName.Split(new[] { "_" }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length != 4)
-                throw new InvalidOperationException($"Plot {plotName} is not in valid Poc1 plotfile format.");
+                throw new PlotConverterException($"Plot {plotName} is not in valid Poc1 plotfile format.");
 
             Id = ulong.Parse(parts[0]);
             Offset = long.Parse(parts[1]);
@@ -42,10 +46,10 @@ namespace Horego.BurstPlotConverter
         public void Validate()
         {
             if (Nonces != Stagger)
-                throw new InvalidOperationException($"Plot file {m_File.Name} isnt optimized.");
+                throw new PlotConverterException($"Plot file {m_File.Name} isnt optimized.");
 
             if (RealPlotSize != ExpectedPlotSize)
-                throw new InvalidOperationException($"The real size ({RealPlotSize}) is not what we expected ({ExpectedPlotSize}).");
+                throw new PlotConverterException($"The real size ({RealPlotSize}) is not what we expected ({ExpectedPlotSize}).");
         }
     }
 }

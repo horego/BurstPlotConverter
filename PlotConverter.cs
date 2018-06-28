@@ -5,9 +5,26 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
+using Horego.BurstPlotConverter.Core;
 
 namespace Horego.BurstPlotConverter
 {
+    internal class ProgressEventArgs
+    {
+        public TimeSpan ElapsedTime { get; }
+        public TimeSpan RemainingTime { get; }
+        public double PercentComplete { get; }
+        public bool IsPaused { get; }
+
+        public ProgressEventArgs(TimeSpan elapsedTime, TimeSpan remainingTime, double percentComplete, bool isPaused)
+        {
+            ElapsedTime = elapsedTime;
+            RemainingTime = remainingTime;
+            PercentComplete = percentComplete;
+            IsPaused = isPaused;
+        }
+    }
+
     internal class PlotConverterCheckpoint
     {
         public long Position { get; }
@@ -97,7 +114,7 @@ namespace Horego.BurstPlotConverter
             var adjustedBlockSize = blockSize * partitions;
             if (checkpoint.Position % adjustedBlockSize != 0)
             {
-                throw new InvalidOperationException($"Can not resume plot conversion with checkpoint {checkpoint.Position} and {partitions} partitions.");
+                throw new PlotConverterException($"Can not resume plot conversion with checkpoint {checkpoint.Position} and {partitions} partitions.");
             }
             var resumeScoopIndex = checkpoint.Position / adjustedBlockSize;
             var buffer1 = new byte[adjustedBlockSize];
@@ -111,14 +128,14 @@ namespace Horego.BurstPlotConverter
                 sourceStream.Seek(pos, SeekOrigin.Begin);
                 var numread = await sourceStream.ReadAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
                 if (numread != adjustedBlockSize)
-                    throw new InvalidOperationException($"read {numread} bytes instead of {adjustedBlockSize}.");
+                    throw new PlotConverterException($"read {numread} bytes instead of {adjustedBlockSize}.");
 
                 await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
 
                 sourceStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End);
                 numread = await sourceStream.ReadAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
                 if (numread != adjustedBlockSize)
-                    throw new InvalidOperationException($"read {numread} bytes instead of {adjustedBlockSize}.");
+                    throw new PlotConverterException($"read {numread} bytes instead of {adjustedBlockSize}.");
 
                 if (partitions == 1)
                 {

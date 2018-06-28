@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Horego.BurstPlotConverter
+namespace Horego.BurstPlotConverter.Core
 {
     internal class PauseAndResumeTask
     {

@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandLine;
+using Horego.BurstPlotConverter.Core;
+using Horego.BurstPlotConverter.Extensions;
 using NLog;
 
 namespace Horego.BurstPlotConverter
@@ -34,6 +36,24 @@ namespace Horego.BurstPlotConverter
                 m_Log.Info($"Start conversion of {fileName}.");
             }
 
+            T TryExecute<T>(Func<T> execute)
+            {
+                try
+                {
+                    return execute();
+                }
+                catch (PlotConverterException e)
+                {
+                    m_Log.Error(e.Message);
+                    return default(T);
+                }
+                catch (Exception e)
+                {
+                    m_Log.Error(e, "Unexpected error.");
+                    return default(T);
+                }
+            }
+
 #if NET461
             ProcessDiskPerformanceCounter diskPerformanceCounter = null;
             IDisposable diskPerformanceCounterSubscription = null;
@@ -45,11 +65,11 @@ namespace Horego.BurstPlotConverter
 
                 if (instanceNames.Count == 0)
                 {
-                    throw new InvalidOperationException($"No process instance with process name {processName} found.");
+                    throw new PlotConverterException($"No process instance with process name {processName} found.");
                 }
                 if (instanceNames.Count > 1)
                 {
-                    throw new InvalidOperationException($"More then one process instance with process name {processName} found. It is only one process supported. Please close other processes.");
+                    throw new PlotConverterException($"More then one process instance with process name {processName} found. It is only one process supported. Please close other processes.");
                 }
                 return instanceNames.First();
             }
@@ -100,7 +120,7 @@ namespace Horego.BurstPlotConverter
                 .MapResult(
                     (InlineFileOptions opts) =>
                     {
-                        try
+                        return TryExecute(() =>
                         {
                             plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                             WriteMemoryUsage(plotConverter.UsedMemoryInMb);
@@ -110,16 +130,11 @@ namespace Horego.BurstPlotConverter
                             InitDiskPerformanceCounter(opts.WatchProcess, opts.WatchProcessThresholdInMb * 1024 * 1024);
 #endif
                             return plotConverter.RunInline(new PlotConverterCheckpoint(opts.Checkpoint));
-                        }
-                        catch (Exception e)
-                        {
-                            m_Log.Error(e);
-                            throw;
-                        }
+                        });
                     },
                     (SeparateFileOptions opts) =>
                     {
-                        try
+                        return TryExecute(() => 
                         {
                             plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                             WriteMemoryUsage(plotConverter.UsedMemoryInMb);
@@ -129,26 +144,16 @@ namespace Horego.BurstPlotConverter
                             InitDiskPerformanceCounter(opts.WatchProcess, opts.WatchProcessThresholdInMb * 1024 * 1024);
 #endif
                             return plotConverter.RunOutline(new FileInfo(opts.OutputFile), new PlotConverterCheckpoint(opts.Checkpoint));
-                        }
-                        catch (Exception e)
-                        {
-                            m_Log.Error(e);
-                            throw;
-                        }
+                        });
                     },
                     (InfoOptions opts) =>
                     {
-                        try
+                        return TryExecute(() =>
                         {
                             plotConverter = new PlotConverter(new FileInfo(opts.InputFile), opts.MemoryInMb);
                             progressSubscription = plotConverter.Progress.Subscribe(WriteProgess);
                             return new TaskFactory().StartNew(() => m_Log.Info(plotConverter.Info()));
-                        }
-                        catch (Exception e)
-                        {
-                            m_Log.Error(e);
-                            throw;
-                        }
+                        });
                     },
                     errs => new TaskFactory().StartNew(() => { }));
 
@@ -165,7 +170,7 @@ namespace Horego.BurstPlotConverter
 
             try
             {
-                workingTask.Wait();
+                workingTask?.Wait();
             }
             catch (Exception e)
             {

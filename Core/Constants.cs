@@ -1,4 +1,4 @@
-﻿namespace Horego.BurstPlotConverter
+﻿namespace Horego.BurstPlotConverter.Core
 {
     internal static class Constants
     {
