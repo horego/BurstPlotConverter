@@ -100,14 +100,17 @@ namespace Horego.BurstPlotConverter.Core
             var timer = Observable.Timer(TimeSpan.Zero, m_ProgressIntervall);
             var timerSubscription = timer.Subscribe(ticks =>
             {
+                var position = iterationPosition;
                 var elapsedTime = stopwatch.Elapsed;
-                var iterationsRemaining = totalIterations - iterationPosition;
-                var percentage = (double)iterationPosition / totalIterations * 100.0;
-                var remainingTime = iterationPosition == 0
-                    ? TimeSpan.MaxValue
-                    : TimeSpan.FromTicks(Convert.ToInt64((double)elapsedTime.Ticks / iterationPosition *
-                                                         iterationsRemaining));
-                Progress.OnNext(new ProgressEventArgs(elapsedTime, remainingTime, percentage, this.IsPausedUnsafe()));
+                var iterationsRemaining = totalIterations - position;
+                var percentage = (double)position / totalIterations * 100.0;
+                var remainingTime = iterationsRemaining == 0
+                    ? TimeSpan.Zero
+                    : (position == 0
+                        ? TimeSpan.MaxValue
+                        : TimeSpan.FromTicks(Convert.ToInt64((double) elapsedTime.Ticks / position *
+                                                             iterationsRemaining)));
+                Progress.OnNext(new ProgressEventArgs(elapsedTime, remainingTime, percentage, IsPausedUnsafe()));
             });
 
             var adjustedBlockSize = blockSize * partitions;
