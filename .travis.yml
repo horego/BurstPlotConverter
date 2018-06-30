@@ -5,7 +5,3 @@ install:
   - dotnet restore
 scripts:
   - dotnet build
-deploy:
-  provider: releases
-  api_key: $GITHUB_OAUTH_TOKEN
-  skip_cleanup: true
