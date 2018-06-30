@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/horego/BurstPlotConverter.svg?branch=master)](https://travis-ci.org/horego/BurstPlotConverter)
+
 # BurstPlotConverter
 Burstcoin PoC1 to PoC2 Plot Converter
 
