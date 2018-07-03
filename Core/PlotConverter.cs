@@ -5,6 +5,8 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
+using Horego.BurstPlotConverter.Extensions;
+using NLog;
 
 namespace Horego.BurstPlotConverter.Core
 {
@@ -42,6 +44,9 @@ namespace Horego.BurstPlotConverter.Core
         readonly int m_Partitions;
         readonly PauseAndResumeTask m_PauseAndResumeTask = new PauseAndResumeTask();
         readonly CancellationTokenSource m_CancellationTokenSource = new CancellationTokenSource();
+        readonly int m_RetryCount = 5;
+        readonly TimeSpan m_TimeBetweenNextRetry = TimeSpan.FromSeconds(5);
+        readonly Logger m_Log = LogManager.GetCurrentClassLogger();
 
         public PlotConverterCheckpoint Checkpoint { get; private set; }
         public int UsedMemoryInMb { get; }
@@ -90,6 +95,62 @@ namespace Horego.BurstPlotConverter.Core
             if (done)
                 m_InputPlotFile.Rename(m_InputPlotFile.Poc2FileName);
         }
+        
+        async Task Retry<TException>(Func<Task> action, Action<TException, int> handleError, Func<TException,Exception> retryExceededException) where TException : Exception
+        {
+            var retry = 0;
+            TException lastException;
+            do
+            {
+                try
+                {
+                    await action().ConfigureAwait(false);
+                    return;
+                }
+                catch (TException e)
+                {
+                    lastException = e;
+                    if (retry == m_RetryCount)
+                    {
+                        break;
+                    }
+                    handleError(e, ++retry);
+                    await Task.Delay(m_TimeBetweenNextRetry).ConfigureAwait(false);
+                }
+            } while (true);
+
+            throw retryExceededException(lastException);
+        }
+
+        async Task Write(Stream destinationStream, byte[] buffer1, byte[] buffer2, long pos, long adjustedBlockSize)
+        {
+            await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
+            destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
+            await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
+
+            await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
+            destinationStream.Seek(pos, SeekOrigin.Begin);
+            await destinationStream.WriteAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
+        }
+
+        async Task Read(Stream sourceStream, byte[] buffer1, byte[] buffer2, long pos, long adjustedBlockSize)
+        {
+            await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
+            sourceStream.Seek(pos, SeekOrigin.Begin);
+            var numread = await sourceStream.ReadAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
+            if (numread != adjustedBlockSize)
+                throw new IOException($"read {numread} bytes instead of {adjustedBlockSize}.");
+
+            await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
+
+            sourceStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End);
+            numread = await sourceStream.ReadAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
+            if (numread != adjustedBlockSize)
+                throw new IOException($"read {numread} bytes instead of {adjustedBlockSize}.");
+        }
 
         async Task<bool> ShufflePoc1To2(FileStream sourceStream, FileStream destinationStream, long blockSize, long numnonces, int partitions, PlotConverterCheckpoint checkpoint)
         {
@@ -125,19 +186,14 @@ namespace Horego.BurstPlotConverter.Core
             {
                 var pos = scoopIndex * adjustedBlockSize;
 
-                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
-
-                sourceStream.Seek(pos, SeekOrigin.Begin);
-                var numread = await sourceStream.ReadAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
-                if (numread != adjustedBlockSize)
-                    throw new PlotConverterException($"read {numread} bytes instead of {adjustedBlockSize}.");
-
-                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
-
-                sourceStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End);
-                numread = await sourceStream.ReadAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
-                if (numread != adjustedBlockSize)
-                    throw new PlotConverterException($"read {numread} bytes instead of {adjustedBlockSize}.");
+                await Retry<IOException>(
+                    async () => await Read(sourceStream, buffer1, buffer2, pos, adjustedBlockSize).ConfigureAwait(false),
+                    (error, retry) => m_Log.Warn(error, $"Error during read operation. Starting retry no {retry} in {m_TimeBetweenNextRetry.ToReadableString()}."),
+                    e =>
+                    {
+                        Checkpoint = new PlotConverterCheckpoint(pos);
+                        return new PlotConverterException($"Max retry of {m_RetryCount} during read operation exceeded. Details: {e}.");
+                    }).ConfigureAwait(false);
 
                 if (partitions == 1)
                 {
@@ -180,15 +236,15 @@ namespace Horego.BurstPlotConverter.Core
                     break;
                 }
 
-                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
-
-                destinationStream.Seek(-(pos + adjustedBlockSize), SeekOrigin.End); //seek from EOF
-                await destinationStream.WriteAsync(buffer2, 0, buffer2.Length).ConfigureAwait(false);
-
-                await m_PauseAndResumeTask.WaitForResume().ConfigureAwait(false);
-
-                destinationStream.Seek(pos, SeekOrigin.Begin);
-                await destinationStream.WriteAsync(buffer1, 0, buffer1.Length).ConfigureAwait(false);
+                await Retry<IOException>(
+                    async () => await Write(destinationStream, buffer1, buffer2, pos, adjustedBlockSize).ConfigureAwait(false),
+                    (error, retry) => m_Log.Warn(error, $"Error during write operation. Starting retry no {retry} in {m_TimeBetweenNextRetry.ToReadableString()}."),
+                    e =>
+                    {
+                        Checkpoint = null;
+                        return new PlotConverterException(
+                            $"Max retry of {m_RetryCount} during write operation exceeded. Details: {e}.");
+                    }).ConfigureAwait(false);
             }
 
             stopwatch.Stop();
