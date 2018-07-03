@@ -6,6 +6,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.RegularExpressions;
 using Horego.BurstPlotConverter.Extensions;
+using NLog;
 
 #if NET461
 
@@ -13,15 +14,20 @@ namespace Horego.BurstPlotConverter.Core
 {
     internal class ProcessDiskPerformanceCounter : IDisposable
     {
-        public string InstanceName { get; }
-        private readonly TimeSpan m_CheckIntervall = TimeSpan.FromSeconds(1);
-        private readonly ProcessDiskReadBytesPerformanceCounter m_ReadSpeedCounter;
-        private readonly ProcessDiskWriteBytesPerformanceCounter m_WriteSpeedCounter;
-        public Subject<DiskUsageEventArgs> DiskUsage { get; }
-        private IDisposable m_TimerSubscription;
+        readonly Logger m_Log;
 
+        IDisposable m_TimerSubscription;
+        readonly TimeSpan m_CheckIntervall;
+        readonly ProcessDiskReadBytesPerformanceCounter m_ReadSpeedCounter;
+        readonly ProcessDiskWriteBytesPerformanceCounter m_WriteSpeedCounter;
+
+        public Subject<DiskUsageEventArgs> DiskUsage { get; }
+        public string InstanceName { get; }
+        
         public ProcessDiskPerformanceCounter(string instanceName)
         {
+            m_Log = LogManager.GetCurrentClassLogger();
+            m_CheckIntervall = TimeSpan.FromSeconds(1);
             InstanceName = instanceName;
             m_ReadSpeedCounter = new ProcessDiskReadBytesPerformanceCounter(instanceName);
             m_WriteSpeedCounter = new ProcessDiskWriteBytesPerformanceCounter(instanceName);
@@ -35,8 +41,19 @@ namespace Horego.BurstPlotConverter.Core
 
         void Check()
         {
-            var readSpeed = m_ReadSpeedCounter.Read();
-            var writeSpeed = m_WriteSpeedCounter.Read();
+            float readSpeed;
+            float writeSpeed;
+            try
+            {
+                readSpeed = m_ReadSpeedCounter.Read();
+                writeSpeed = m_WriteSpeedCounter.Read();
+            }
+            catch (InvalidOperationException e)
+            {
+                m_Log.Warn(e, $"Could not determine disk usage of {InstanceName}. Maybe you closed the application?. Please restart the application '{InstanceName}'.");
+                DiskUsage.OnNext(DiskUsageEventArgs.Zero);
+                return;
+            }
             DiskUsage.OnNext(new DiskUsageEventArgs(readSpeed, writeSpeed));
         }
 
@@ -55,6 +72,8 @@ namespace Horego.BurstPlotConverter.Core
             {
                 return $"read {BytesReadPerSec.BytesToReadableString()}, write {BytesWritePerSec.BytesToReadableString()} per sec.";
             }
+
+            public static DiskUsageEventArgs Zero => new DiskUsageEventArgs(0, 0);
         }
 
         public void Dispose()
